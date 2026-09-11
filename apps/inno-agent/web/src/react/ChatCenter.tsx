@@ -1169,6 +1169,19 @@ export function ChatCenter() {
 										placeholder={t("chat.wsNamePlaceholder")}
 										value={wsName}
 										onChange={(e) => setWsName(e.target.value)}
+										onKeyDown={(e) => {
+											// There's no separate "save" step for the workspace name — it's
+											// only actually persisted once the first chat message is sent
+											// (see handleSend). Without this, Enter here was a silent no-op:
+											// the name stayed in local state but nothing visibly happened,
+											// which reads as "didn't save" even though it would have worked
+											// fine on send. Move focus to the composer instead, so Enter
+											// gives feedback and naturally continues the flow.
+											if (e.key === "Enter") {
+												e.preventDefault();
+												inputRef.current?.focus();
+											}
+										}}
 										className="ml-1 w-[200px] rounded-full border border-[var(--inno-border)] bg-[var(--inno-surface)] px-2 py-px text-[10px] leading-tight outline-none focus-visible:border-[var(--inno-focus-border)] focus-visible:outline-none focus-visible:shadow-[var(--inno-ring)]"
 									/>
 								) : null}
