@@ -735,6 +735,24 @@ export function ChatCenter() {
 	const [showNewWsDialog, setShowNewWsDialog] = useState(false);
 	const [wsError, setWsError] = useState("");
 
+	// Shared by the "保存" button and Enter-in-the-name-field below — extracted
+	// so both paths actually create the workspace instead of Enter silently
+	// closing the dialog without saving (the dialog only called setShowNewWsDialog(false)
+	// on Enter, never workspacesStore.create(...), so a typed name was discarded).
+	const handleSaveNewWorkspace = useCallback(async () => {
+		const trimmed = wsName.trim();
+		if (!trimmed) return;
+		try {
+			const ws = await workspacesStore.create({ name: trimmed, isTemp: false });
+			setWsMode("existing");
+			setWsExistingId(ws.id);
+			setShowNewWsDialog(false);
+			setShowWsOptions(false);
+		} catch {
+			// ignore
+		}
+	}, [wsName]);
+
 	// Simple Mode surfaces preset workspaces for one-click start.
 	const simpleMode = useStoreSnapshot(settingsStore, () => settingsStore.settings?.simpleMode?.enabled === true);
 	// Whether the selected Provider accepts native image message blocks.
@@ -1450,7 +1468,7 @@ export function ChatCenter() {
 								onChange={(e) => setWsName(e.target.value)}
 								onKeyDown={(e) => {
 									if (e.key === "Enter" && wsName.trim()) {
-										setShowNewWsDialog(false);
+										void handleSaveNewWorkspace();
 									}
 								}}
 								className="mt-2 mb-4 w-full rounded border border-[var(--inno-border)] bg-white px-3 py-1.5 text-[16px] outline-none focus-visible:border-[var(--inno-focus-border)] focus-visible:shadow-[var(--inno-ring)]"
@@ -1465,19 +1483,7 @@ export function ChatCenter() {
 								<button
 									className="h-9 w-[68px] rounded-lg bg-[var(--inno-accent)] text-[14px] font-bold text-white disabled:opacity-40"
 									disabled={!wsName.trim()}
-									onClick={async () => {
-										const trimmed = wsName.trim();
-										if (!trimmed) return;
-										try {
-											const ws = await workspacesStore.create({ name: trimmed, isTemp: false });
-											setWsMode("existing");
-											setWsExistingId(ws.id);
-											setShowNewWsDialog(false);
-											setShowWsOptions(false);
-										} catch {
-											// ignore
-										}
-									}}
+									onClick={handleSaveNewWorkspace}
 								>
 									保存
 								</button>
