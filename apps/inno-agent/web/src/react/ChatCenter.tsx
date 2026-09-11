@@ -732,6 +732,7 @@ export function ChatCenter() {
 	const [showWsOptions, setShowWsOptions] = useState(false);
 	const [showWsDropdown, setShowWsDropdown] = useState(false);
 	const wsDropdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const wsOptionsRef = useRef<HTMLDivElement>(null);
 	const [showNewWsDialog, setShowNewWsDialog] = useState(false);
 	const [wsError, setWsError] = useState("");
 
@@ -839,6 +840,31 @@ export function ChatCenter() {
 		if (wsMode === "temp") return "临时工作区(用完即弃)";
 		return t("workspace.title");
 	}, [wsMode, wsExistingId, selectableWorkspaces, t]);
+
+	// Clicking anywhere outside the open workspace-options panel should
+	// dismiss it, same as the reusable Select component's pattern — it only
+	// ever closed via one of its own option buttons, never on an outside click.
+	useEffect(() => {
+		if (!showWsOptions) return;
+		function onDown(e: MouseEvent) {
+			if (wsOptionsRef.current && !wsOptionsRef.current.contains(e.target as Node)) {
+				setShowWsOptions(false);
+				setShowWsDropdown(false);
+			}
+		}
+		function onKey(e: KeyboardEvent) {
+			if (e.key === "Escape") {
+				setShowWsOptions(false);
+				setShowWsDropdown(false);
+			}
+		}
+		document.addEventListener("mousedown", onDown);
+		document.addEventListener("keydown", onKey);
+		return () => {
+			document.removeEventListener("mousedown", onDown);
+			document.removeEventListener("keydown", onKey);
+		};
+	}, [showWsOptions]);
 
 	// Welcome state: derived once in the sessions store (single source of truth).
 	const isWelcome = sessions.isWelcome;
@@ -1371,7 +1397,7 @@ export function ChatCenter() {
 								<span className="text-[10px] text-[var(--inno-text-subtle)]">{t("chat.newChatHere")}</span>
 							</div>
 						) : (
-							<div className="mt-3">
+							<div className="mt-3" ref={wsOptionsRef}>
 								<button
 									type="button"
 									onClick={() => setShowWsOptions((v) => !v)}
