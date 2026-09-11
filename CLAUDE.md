@@ -14,6 +14,7 @@ This is an npm workspaces monorepo (Node.js >=20.6.0, ES modules) for **Inno Age
 - `docs/` — screenshots, use-case guides, and `SYSTEM_DEPENDENCIES.md`.
 - `runtime/` — local runtime state (config, data, skills); gitignored. Mapped to `INNO_*` env vars.
 - `workspace/` — default agent working directory; gitignored.
+- `ops/` — git submodule ([inno-agent-ops](https://github.com/sy007-spec/inno-agent-ops)): the `ops.py` CLI for environment bootstrap (system deps, Docker), AI provider/channel config templates, and the UAT/system-test layers (Playwright E2E, scenario regression) on top of `npm test`/`restart-dev.sh`. Run `git submodule update --init` after cloning if it's empty. See `ops/README.md`.
 
 PI SDK packages (`@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, `@earendil-works/pi-web-ui`) are pulled from npm.
 
