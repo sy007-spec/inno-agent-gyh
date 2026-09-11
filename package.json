@@ -21,6 +21,7 @@
 		"web:dev": "npm --workspace inno-agent-web run dev",
 		"dev:server": "npm --workspace inno-agent run server --",
 		"restart": "bash restart-dev.sh",
+		"ops": "python3 ops/ops.py",
 		"restart:fast": "bash restart-dev.sh --skip-build",
 		"electron": "electron .",
 		"electron:build": "npm run build && electron-builder --mac",

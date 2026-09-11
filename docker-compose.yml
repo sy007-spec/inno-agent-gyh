@@ -1,6 +1,14 @@
 services:
   inno-agent:
     build: .
+    # Run as the host dev user (not the image's default root) so files the
+    # container writes into the bind-mounted runtime/ and workspace/ dirs
+    # (config.json, session logs, L2/L3 databases, ...) stay owned by
+    # whoever's actually developing here, instead of flipping to root:root
+    # and locking them out of their own editor/IDE. Match this to `id -u`/
+    # `id -g` for your dev user if it isn't 1000:1000. See ops/docs/FAQ.md
+    # FAQ-003 (why) and FAQ-006 (a sharp edge this introduces).
+    user: "1000:1000"
     ports:
       - "3000:3000"
     environment:
