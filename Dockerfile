@@ -10,6 +10,7 @@ RUN sed -i 's|http://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/d
 
 # Copy package manifests for dependency installation
 COPY package.json package-lock.json tsconfig.base.json ./
+COPY vendor vendor/
 COPY apps/inno-agent/package.json apps/inno-agent/tsconfig.json apps/inno-agent/
 COPY apps/inno-agent/web/package.json apps/inno-agent/web/tsconfig.json apps/inno-agent/web/
 
