@@ -142,13 +142,24 @@ export const TEXT_PREVIEW_EXTENSIONS = new Set([
 export const TEXT_NOEXT_NAMES = new Set(["makefile", "dockerfile", "gemfile", "rakefile", "procfile", "vagrantfile"]);
 
 /** Office document extensions previewable via LiteParse text extraction. */
-export const OFFICE_PREVIEW_EXTENSIONS = new Set([".docx", ".xlsx", ".pptx"]);
+export const OFFICE_PREVIEW_EXTENSIONS = new Set([".docx", ".xlsx", ".pptx", ".xls", ".xlsm", ".xlsb"]);
 
-/** Map an office extension to a preview format the frontend dispatches on. */
+/**
+ * Map an office extension to a preview format the frontend dispatches on.
+ * Legacy spreadsheet formats (.xls/.xlsm/.xlsb) map onto "xlsx" — SheetJS
+ * (the `xlsx` package XlsxPreview.tsx already uses) auto-detects the actual
+ * binary format from content, not from the extension, so the same preview
+ * component renders all of them correctly. .doc/.ppt (legacy Word/
+ * PowerPoint) are deliberately NOT included here — DocxPreview/PptxPreview
+ * use docx-preview and a pptx-specific converter respectively, neither of
+ * which can parse the old binary formats, so routing those through would
+ * just move the failure somewhere more confusing than the current clean
+ * "binary file, open as text" fallback.
+ */
 export function officeFormat(filePath: string): "docx" | "xlsx" | "pptx" | undefined {
 	const ext = extname(filePath).toLowerCase();
 	if (ext === ".docx") return "docx";
-	if (ext === ".xlsx") return "xlsx";
+	if (ext === ".xlsx" || ext === ".xls" || ext === ".xlsm" || ext === ".xlsb") return "xlsx";
 	if (ext === ".pptx") return "pptx";
 	return undefined;
 }
@@ -172,6 +183,9 @@ export function contentTypeForWorkspaceFile(filePath: string): string {
 	if (ext === ".docx") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 	if (ext === ".xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 	if (ext === ".pptx") return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+	if (ext === ".xls") return "application/vnd.ms-excel";
+	if (ext === ".xlsm") return "application/vnd.ms-excel.sheet.macroEnabled.12";
+	if (ext === ".xlsb") return "application/vnd.ms-excel.sheet.binary.macroEnabled.12";
 	if (TEXT_PREVIEW_EXTENSIONS.has(ext)) return "text/plain; charset=utf-8";
 	if (isDotfileText(filePath)) return "text/plain; charset=utf-8";
 	return "application/octet-stream";
