@@ -100,7 +100,7 @@ function nodeIcon(name: string, isDir: boolean, isOpen: boolean) {
 	if (lower.endsWith(".pdf")) return <FileType size={14} />;
 	if (lower.endsWith(".html") || lower.endsWith(".htm")) return <Globe size={14} />;
 	if (lower.endsWith(".pptx")) return <Presentation size={14} />;
-	if (lower.endsWith(".xlsx")) return <FileSpreadsheet size={14} />;
+	if (lower.endsWith(".xlsx") || lower.endsWith(".xls") || lower.endsWith(".xlsm") || lower.endsWith(".xlsb")) return <FileSpreadsheet size={14} />;
 	if (lower.endsWith(".docx")) return <FileText size={14} />;
 	return <File size={14} />;
 }
@@ -110,7 +110,9 @@ function officeFormatFromName(name: string): WorkspaceOfficeFormat | undefined {
 	const lower = name.toLowerCase();
 	if (lower.endsWith(".pptx")) return "pptx";
 	if (lower.endsWith(".docx")) return "docx";
-	if (lower.endsWith(".xlsx")) return "xlsx";
+	// Legacy binary spreadsheet formats render through the same XlsxPreview —
+	// SheetJS auto-detects the actual format from content, not the extension.
+	if (lower.endsWith(".xlsx") || lower.endsWith(".xls") || lower.endsWith(".xlsm") || lower.endsWith(".xlsb")) return "xlsx";
 	return undefined;
 }
 
