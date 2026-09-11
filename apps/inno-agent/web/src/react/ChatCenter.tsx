@@ -830,6 +830,16 @@ export function ChatCenter() {
 		[workspaces.list],
 	);
 
+	// The "工作区" chip always showed the generic label, never which workspace
+	// is actually selected — compute the real display name from wsMode/wsExistingId.
+	const currentWsLabel = useMemo(() => {
+		if (wsMode === "existing" && wsExistingId) {
+			return selectableWorkspaces.find((w) => w.id === wsExistingId)?.name ?? t("workspace.title");
+		}
+		if (wsMode === "temp") return "临时工作区(用完即弃)";
+		return t("workspace.title");
+	}, [wsMode, wsExistingId, selectableWorkspaces, t]);
+
 	// Welcome state: derived once in the sessions store (single source of truth).
 	const isWelcome = sessions.isWelcome;
 	// Workspace that will receive pending attachments when Send is clicked.
@@ -1367,7 +1377,7 @@ export function ChatCenter() {
 									onClick={() => setShowWsOptions((v) => !v)}
 									className="flex w-fit items-center gap-3.5 rounded-md border border-[var(--inno-border)] bg-[var(--inno-surface)] px-2.5 py-0.5 text-[11px] text-[var(--inno-text-muted)] transition-colors hover:border-[var(--inno-accent)] hover:text-[var(--inno-accent)]"
 								>
-									<span className="flex items-center gap-1"><Folder size={14} />{t("workspace.title")}</span>
+									<span className="flex items-center gap-1"><Folder size={14} />{currentWsLabel}</span>
 									<svg className={`h-3 w-3 transition-transform ${showWsOptions ? "rotate-90" : ""}`} viewBox="0 0 8 12" fill="none"><path d="M1 1l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
 								</button>
 								{showWsOptions ? (
@@ -1392,6 +1402,7 @@ export function ChatCenter() {
 																	setWsMode("existing");
 																	setWsExistingId(w.id);
 																	setShowWsDropdown(false);
+																	setShowWsOptions(false);
 																}}
 																className="flex w-full items-center gap-3 px-2 py-0.5 text-left text-[11px] transition-colors text-[var(--inno-text-muted)] hover:bg-[var(--inno-surface-muted)] hover:text-[var(--inno-text)]"
 															>
@@ -1408,6 +1419,7 @@ export function ChatCenter() {
 											onClick={() => {
 												setWsMode("new");
 												setShowNewWsDialog(true);
+												setShowWsOptions(false);
 											}}
 											className="rounded px-2 py-0.5 text-left text-[11px] transition-colors text-[var(--inno-text-muted)] hover:bg-[var(--inno-surface-muted)] hover:text-[var(--inno-text)]"
 										>
