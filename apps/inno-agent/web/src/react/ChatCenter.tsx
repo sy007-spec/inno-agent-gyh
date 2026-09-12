@@ -1258,7 +1258,9 @@ export function ChatCenter() {
 			}));
 			setUploads((current) => [...current, ...items]);
 		}
-		if (rejections.length > 0) setWsError(rejections.join("\n"));
+		// Always reflect this call's outcome, including clearing a stale message
+		// from an earlier drop/paste/select when this one has no rejections.
+		setWsError(rejections.join("\n"));
 	}, [inlineImages, uploads, attachmentLimits, addImageFiles]);
 
 	const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1312,6 +1314,11 @@ export function ChatCenter() {
 
 	const removeInlineImage = useCallback((index: number) => {
 		setInlineImages((prev) => prev.filter((_, i) => i !== index));
+		// Any current wsError describes a rejection against the *old* attachment
+		// set (a rejected file never gets a chip/preview in the first place) —
+		// once the user changes that set, the message is stale either way, so
+		// clear it rather than leaving it stuck on screen indefinitely.
+		setWsError("");
 	}, []);
 
 	const handleFiles = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1323,6 +1330,9 @@ export function ChatCenter() {
 
 	const removeUpload = useCallback((index: number) => {
 		setUploads((current) => current.filter((_, i: number) => i !== index));
+		// See removeInlineImage — a stale rejection message must not survive a
+		// change to the attachment set it was computed against.
+		setWsError("");
 	}, []);
 
 	/** Only true when dragging files from the OS (not some internal drag). */

@@ -1,7 +1,7 @@
 import { createContext, lazy, memo, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Tree, type NodeRendererProps, type TreeApi, type NodeApi, type CreateHandler, type RenameHandler, type DeleteHandler, type MoveHandler } from "react-arborist";
-import { FileText, FileType, Globe, File, FolderOpen, Folder, Pencil, X, PanelRightClose, PanelRightOpen, Sparkles, Download, FileCode2, Presentation, FileSpreadsheet, Copy, Check, MoreHorizontal, ListChecks, Trash2, FilePlus, FolderPlus } from "lucide-react";
+import { FileText, FileType, Globe, File, FolderOpen, Folder, Pencil, X, PanelRightClose, PanelRightOpen, Sparkles, Download, FileCode2, Presentation, FileSpreadsheet, Copy, Check, MoreHorizontal, ListChecks, Trash2, FilePlus, FolderPlus, AlertTriangle } from "lucide-react";
 import uploadUrl from "./ui/upload.svg";
 import refreshUrl from "./ui/refresh.svg";
 import emptyStateUrl from "./ui/Empty-State.svg";
@@ -912,6 +912,7 @@ export function WorkspaceBrowser() {
 		isLoadingTree: workspaceStore.isLoadingTree,
 		isMutating: workspaceStore.isMutating,
 		activeWorkspaceId: workspaceStore.activeWorkspaceId,
+		error: workspaceStore.error,
 	}));
 	const wsState = useStoreSnapshot(workspacesStore, () => ({
 		list: workspacesStore.workspaces,
@@ -1157,6 +1158,7 @@ export function WorkspaceBrowser() {
 
 		{/* --- Tree pane (right side) --- */}
 		<aside
+			data-testid="workspace-tree-pane"
 			className={`relative flex min-h-0 flex-col overflow-hidden border-l border-[var(--inno-border)] transition-opacity duration-200 ${isDragOver ? "border-r border-t border-b border-[var(--inno-border)] bg-[var(--inno-accent-soft)]" : ""} ${sidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
 			onDragOver={handleDragOver}
 			onDragLeave={handleDragLeave}
@@ -1191,6 +1193,16 @@ export function WorkspaceBrowser() {
 					</button>
 					<input ref={skillUploadRef} type="file" multiple accept=".zip,application/zip,.md,text/markdown" className="hidden" onChange={handleSkillUploadChange} />
 				</div>
+
+				{state.error ? (
+					<div className="flex shrink-0 items-start gap-1.5 border-b border-[var(--inno-danger-border)] bg-[var(--inno-danger-bg)] px-2 py-1.5 text-xs text-[var(--inno-danger)]">
+						<AlertTriangle size={13} className="mt-0.5 shrink-0" />
+						<span className="min-w-0 flex-1 break-words">{state.error}</span>
+						<button className="shrink-0 hover:opacity-70" title={t("common.close", "Close")} onClick={() => workspaceStore.clearError()}>
+							<X size={13} />
+						</button>
+					</div>
+				) : null}
 
 				{multiSelectMode ? (
 					<div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--inno-border)] bg-[var(--inno-accent-soft)] px-2">

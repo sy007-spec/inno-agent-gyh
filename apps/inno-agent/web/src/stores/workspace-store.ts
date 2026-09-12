@@ -49,6 +49,13 @@ class WorkspaceStoreImpl extends EventEmitter<WorkspaceStoreEvents> {
 	private treeRequestId = 0;
 	private fileRequestId = 0;
 
+	/** Dismiss the current error banner (e.g. after a failed upload) without touching anything else. */
+	clearError(): void {
+		if (!this.error) return;
+		this.error = "";
+		this.emit("change", undefined);
+	}
+
 	/** Set the active workspace and reload the tree. */
 	async setActiveWorkspace(workspaceId: string | null): Promise<void> {
 		if (this.activeWorkspaceId === workspaceId) return;
@@ -307,6 +314,7 @@ class WorkspaceStoreImpl extends EventEmitter<WorkspaceStoreEvents> {
 
 	async uploadFiles(parentPath: string, fileList: FileList | File[]): Promise<void> {
 		this.isMutating = true;
+		this.error = "";
 		this.emit("change", undefined);
 		try {
 			const items: Array<{ path: string; dataBase64: string }> = [];
