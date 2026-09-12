@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { WifiOff } from "lucide-react";
 import { appStore, type RightPanelTab, type WorkspaceMode } from "../stores/app-store.js";
 import { settingsStore } from "../stores/settings-store.js";
 import { sessionsStore } from "../stores/sessions-store.js";
@@ -12,6 +13,43 @@ import { SettingsOverlay } from "./settings/SettingsOverlay.js";
 /** Breakpoint below which sidebars auto-collapse */
 const SIDEBAR_COLLAPSE_BP = 960;
 const WORKSPACE_COLLAPSE_BP = 820;
+
+/**
+ * Passive "you're offline" hint, app-wide (not chat-specific — losing the
+ * network affects the terminal, wiki saves, uploads, etc., not just chat).
+ *
+ * navigator.onLine / the online-offline events only reflect whether the
+ * network *interface* is up, not whether the server is reachable — they can
+ * false-positive as "online" behind a captive portal or a dead upstream link.
+ * That's why this is deliberately just a hint, not a gate: it never blocks or
+ * skips a request. The authoritative signal for "did this specific action
+ * fail" is still each request's own try/catch (see ChatCenter's ErrorBlock),
+ * which this doesn't replace. This only covers the complementary case the
+ * per-request handling can't: telling the user *before* they act that the
+ * interface itself just dropped.
+ */
+function OfflineBanner() {
+	const [offline, setOffline] = useState(() => typeof navigator !== "undefined" && !navigator.onLine);
+
+	useEffect(() => {
+		const onOffline = () => setOffline(true);
+		const onOnline = () => setOffline(false);
+		window.addEventListener("offline", onOffline);
+		window.addEventListener("online", onOnline);
+		return () => {
+			window.removeEventListener("offline", onOffline);
+			window.removeEventListener("online", onOnline);
+		};
+	}, []);
+
+	if (!offline) return null;
+	return (
+		<div className="fixed inset-x-0 top-0 z-[200] flex items-center justify-center gap-1.5 bg-[var(--inno-danger-bg)] px-3 py-1 text-xs text-[var(--inno-danger)]">
+			<WifiOff size={14} />
+			网络连接已断开，部分功能可能无法使用
+		</div>
+	);
+}
 
 let initializationPromise: Promise<void> | null = null;
 
@@ -107,6 +145,7 @@ export function App() {
 
 	return (
 		<>
+			<OfflineBanner />
 			<div
 				className={`app-layout app-layout--sidebar-${app.sidebarCollapsed ? "collapsed" : "expanded"} app-layout--workspace-${app.workspaceMode}`}
 				style={{ "--inno-sidebar-width": `${app.sidebarWidth}px`, "--inno-workspace-width": `${app.workspaceWidth}px` } as React.CSSProperties}
