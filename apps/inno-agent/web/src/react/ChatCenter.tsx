@@ -708,6 +708,9 @@ export function ChatCenter() {
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 	const shouldStickToBottomRef = useRef(true);
 	const [uploads, setUploads] = useState<PendingUpload[]>([]);
+	// Drag-and-drop onto the composer itself — the workspace file tree already
+	// supports OS-level drag-drop (WorkspaceBrowser.tsx), the composer never did.
+	const [isComposerDragOver, setIsComposerDragOver] = useState(false);
 	const [isUploading, setIsUploading] = useState(false);
 	const [inlineImages, setInlineImages] = useState<(InlineImage & { name: string; previewUrl: string })[]>([]);
 	// When the user pastes a large block of text (many lines / chars), we
@@ -1246,6 +1249,49 @@ export function ChatCenter() {
 		setUploads((current) => current.filter((_, i: number) => i !== index));
 	}, []);
 
+	/** Only true when dragging files from the OS (not some internal drag). */
+	const isExternalFileDrag = useCallback((e: React.DragEvent) => {
+		return e.dataTransfer.types.includes("Files");
+	}, []);
+
+	const handleComposerDragOver = useCallback((e: React.DragEvent) => {
+		if (!isExternalFileDrag(e)) return;
+		e.preventDefault();
+		setIsComposerDragOver(true);
+	}, [isExternalFileDrag]);
+
+	const handleComposerDragLeave = useCallback((e: React.DragEvent) => {
+		if (!isExternalFileDrag(e)) return;
+		e.preventDefault();
+		setIsComposerDragOver(false);
+	}, [isExternalFileDrag]);
+
+	/**
+	 * Dropped files split the same way the two toolbar buttons already do:
+	 * images become inline previews (addImageFiles, same path as the image
+	 * button / paste), everything else becomes an upload chip (same shape
+	 * handleFiles already builds from the file-picker input).
+	 */
+	const handleComposerDrop = useCallback((e: React.DragEvent) => {
+		if (!isExternalFileDrag(e)) return;
+		e.preventDefault();
+		setIsComposerDragOver(false);
+		const files = Array.from(e.dataTransfer.files ?? []);
+		if (files.length === 0) return;
+		const images = files.filter((f) => f.type.startsWith("image/"));
+		const rest = files.filter((f) => !f.type.startsWith("image/"));
+		if (images.length > 0) addImageFiles(images);
+		if (rest.length > 0) {
+			setWsError("");
+			const items = rest.map((file) => ({
+				fileName: file.name,
+				path: file.name.replace(/[\\/?%*:|"<>]/g, "_").trim() || `upload-${Date.now()}`,
+				file,
+			}));
+			setUploads((current) => [...current, ...items]);
+		}
+	}, [isExternalFileDrag, addImageFiles]);
+
 	const renderUploadChips = () => (
 		uploads.length > 0 ? (
 			<div className="mb-2 flex flex-wrap gap-1.5">
@@ -1300,7 +1346,13 @@ export function ChatCenter() {
 	);
 
 	const renderComposer = (placeholder: string) => (
-		<div className="inno-composer flex flex-col gap-2 rounded-xl border-2 border-[var(--inno-border)] bg-[var(--inno-surface)] p-3" style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+		<div
+			className={`inno-composer flex flex-col gap-2 rounded-xl border-2 p-3 transition-colors ${isComposerDragOver ? "border-[var(--inno-accent)] bg-[var(--inno-accent-soft)]" : "border-[var(--inno-border)] bg-[var(--inno-surface)]"}`}
+			style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}
+			onDragOver={handleComposerDragOver}
+			onDragLeave={handleComposerDragLeave}
+			onDrop={handleComposerDrop}
+		>
 			<input ref={fileInputRef} id="file-input" type="file" className="hidden" multiple onChange={handleFiles} />
 			<input ref={imageInputRef} id="image-input" type="file" className="hidden" multiple accept="image/*" onChange={handleImageFiles} />
 		<textarea
