@@ -95,7 +95,20 @@ export class SessionsStoreImpl extends EventEmitter<SessionsStoreEvents> {
 		this.emit("change", undefined);
 	}
 
+	// See workspaces-store.ts's identical pattern for why: several independent
+	// effects can each call load() around the same user action, and without
+	// this they'd each fire their own GET /api/sessions instead of sharing one.
+	private _loadPromise: Promise<void> | null = null;
+
 	async load(): Promise<void> {
+		if (this._loadPromise) return this._loadPromise;
+		this._loadPromise = this._doLoad().finally(() => {
+			this._loadPromise = null;
+		});
+		return this._loadPromise;
+	}
+
+	private async _doLoad(): Promise<void> {
 		this.isLoading = true;
 		this.emit("change", undefined);
 		try {
@@ -194,11 +207,15 @@ export class SessionsStoreImpl extends EventEmitter<SessionsStoreEvents> {
 			});
 
 		try {
-			const session = await getSession(id);
-			const chatStatus = await getChatStatus(id).catch((error) => {
-				console.warn(`[sessions] failed to load chat status for ${id}:`, error instanceof Error ? error.message : error);
-				return { found: false } as Awaited<ReturnType<typeof getChatStatus>>;
-			});
+			// Independent requests — getChatStatus doesn't need the session's
+			// content, so there's no reason to wait for it to finish first.
+			const [session, chatStatus] = await Promise.all([
+				getSession(id),
+				getChatStatus(id).catch((error) => {
+					console.warn(`[sessions] failed to load chat status for ${id}:`, error instanceof Error ? error.message : error);
+					return { found: false } as Awaited<ReturnType<typeof getChatStatus>>;
+				}),
+			]);
 			if (requestId !== this._openRequestId) return;
 
 			this._messageCache.set(id, session.messages);

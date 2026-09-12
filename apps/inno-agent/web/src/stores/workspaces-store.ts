@@ -16,6 +16,13 @@ class WorkspacesStoreImpl extends EventEmitter<WorkspacesStoreEvents> {
 	workspaces: WorkspaceMeta[] = [];
 	isLoading = false;
 	error = "";
+	// Half a dozen call sites can each trigger a reload around the same user
+	// action (opening a session cascades through several independent effects
+	// that all call load()) — without this, that fired 3 concurrent identical
+	// GET /api/workspaces requests for one click. Coalescing concurrent calls
+	// into the one in-flight promise costs nothing when there's no overlap and
+	// removes the duplicate round trips when there is.
+	private _loadPromise: Promise<void> | null = null;
 
 	get nonTemp(): WorkspaceMeta[] {
 		return this.workspaces.filter((w) => !w.isTemp);
@@ -26,6 +33,14 @@ class WorkspacesStoreImpl extends EventEmitter<WorkspacesStoreEvents> {
 	}
 
 	async load(): Promise<void> {
+		if (this._loadPromise) return this._loadPromise;
+		this._loadPromise = this._doLoad().finally(() => {
+			this._loadPromise = null;
+		});
+		return this._loadPromise;
+	}
+
+	private async _doLoad(): Promise<void> {
 		this.isLoading = true;
 		this.error = "";
 		this.emit("change", undefined);
