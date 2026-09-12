@@ -12,7 +12,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 import { getL2Memory } from "./memory/l2/l2-memory.js";
 import { buildWikiGraph } from "./memory/l2/wiki-graph.js";
-import { loadConfig, saveConfig, setDefaultModel, upsertProvider, deleteProvider, deleteModel, normalizeContentHubConfig, type InnoConfig, type InnoContentHubConfig, type InnoModelConfig, type InnoProviderConfig } from "./config.js";
+import { loadConfig, saveConfig, setDefaultModel, upsertProvider, deleteProvider, deleteModel, normalizeContentHubConfig, normalizeAttachmentLimitsConfig, type InnoConfig, type InnoContentHubConfig, type InnoModelConfig, type InnoProviderConfig } from "./config.js";
 import { installFetchLogger } from "./utils/fetch-logger.js";
 import { applyProviderProxyBypass } from "./utils/proxy-bypass.js";
 import { probeProviderModels } from "./agent/model-probe.js";
@@ -64,6 +64,9 @@ import { RunRecordStore } from "./terminal/run-record-store.js";
 import { TerminalSessionManager } from "./terminal/terminal-session-manager.js";
 import type { ClientTerminalEvent, ServerTerminalEvent } from "./terminal/terminal-types.js";
 import { WebSocketServer, type WebSocket } from "ws";
+import { DEFAULT_ATTACHMENT_LIMITS, describeRejection, filterInlineImages, formatMismatchRejection, validateAttachment, type AttachmentValidationContext } from "./attachment-policy.js";
+import { describeArchiveRejection, inspectArchive } from "./utils/zip-inspect.js";
+import { verifyRealFormat, verifyRealImageFormat } from "./utils/sniff-format.js";
 
 // ---------------------------------------------------------------------------
 // Bootstrap
@@ -3834,20 +3837,68 @@ const server = createServer(async (req, res) => {
 			if (!root) { json(res, 404, { error: "Workspace not found" }); return; }
 			const files = Array.isArray(body.files) ? body.files : [];
 			if (!files.length) { json(res, 400, { error: "No files provided" }); return; }
+			// The general workspace file browser (WorkspaceBrowser.tsx) and the chat
+			// composer's attachment upload both post here. Only the chat-attachment
+			// channel is governed by the BRD's type/size/count rules (§R2) — the
+			// browser's own uploads stay exactly as unrestricted as they always were.
+			const isChatAttachment = body.channel === "chat-attachment";
+			const attachmentLimits = config.attachmentLimits ?? DEFAULT_ATTACHMENT_LIMITS;
+			// "Attachments this session" is approximated by counting files already
+			// landed in this workspace's .chat-attachments/ dir — a session's
+			// workspace is where its chat attachments physically live, so this is
+			// exact for the common case (one workspace per session) and a
+			// reasonable shared budget for the rarer case of an explicitly reused
+			// workspace across sessions.
+			const chatAttachmentsDir = join(root, ".chat-attachments");
+			const attachmentsInSessionAlready = isChatAttachment && existsSync(chatAttachmentsDir)
+				? readdirSync(chatAttachmentsDir).length
+				: 0;
+
 			const uploaded: Array<{ name: string; path: string; type: string; size: number; updatedAt: string }> = [];
+			const failed: Array<{ fileName: string; error: string }> = [];
 			let installedSkill = false;
+			const messageContext: AttachmentValidationContext = {
+				imagesInMessage: 0,
+				attachmentsInMessage: 0,
+				attachmentBytesInMessage: 0,
+				attachmentsInSession: attachmentsInSessionAlready,
+			};
+
 			for (const entry of files) {
 				const filePath = typeof entry.path === "string" ? entry.path.trim() : "";
 				const dataBase64 = typeof entry.dataBase64 === "string" ? entry.dataBase64 : "";
 				if (!filePath || !dataBase64) continue;
-				const fullPath = safeWorkspacePath(wsId, filePath);
-				if (!fullPath) continue;
 				const data = Buffer.from(dataBase64, "base64");
+				const fileName = basename(filePath);
+
+				if (isChatAttachment) {
+					const result = validateAttachment({ name: fileName, size: data.length }, attachmentLimits, messageContext);
+					if (!result.ok) {
+						failed.push({ fileName: result.fileName, error: describeRejection(result) });
+						continue;
+					}
+					// §R4 "real-format check": catch a file disguised by renaming (e.g. an
+					// .exe saved as .png) before it's ever written to disk.
+					if (!(await verifyRealFormat(extname(fileName), data))) {
+						failed.push({ fileName, error: describeRejection(formatMismatchRejection(fileName)) });
+						continue;
+					}
+					messageContext.attachmentsInMessage += 1;
+					messageContext.attachmentBytesInMessage += data.length;
+					messageContext.attachmentsInSession += 1;
+					if (result.kind === "image") messageContext.imagesInMessage += 1;
+				}
+
+				const fullPath = isChatAttachment
+					? join(chatAttachmentsDir, fileName)
+					: safeWorkspacePath(wsId, filePath);
+				if (!fullPath) continue;
 				const ext = extname(filePath).toLowerCase();
 
 				// A .zip or .md dropped into the workspace's private skills dir is
 				// installed as a skill (zip is extracted) rather than written raw.
-				if (filePath.split("/").includes(WORKSPACE_PRIVATE_SKILLS_DIR) && (ext === ".zip" || ext === ".md")) {
+				// Chat attachments never take this path — they never target that dir.
+				if (!isChatAttachment && filePath.split("/").includes(WORKSPACE_PRIVATE_SKILLS_DIR) && (ext === ".zip" || ext === ".md")) {
 					try {
 						const skill = ext === ".zip"
 							? installSkillZip(basename(filePath), data, join(root, WORKSPACE_PRIVATE_SKILLS_DIR))
@@ -3862,19 +3913,37 @@ const server = createServer(async (req, res) => {
 					}
 				}
 
-				ensureDir(dirname(fullPath));
-				writeFileSync(fullPath, data);
-				const stat = statSync(fullPath);
-				uploaded.push({
-					name: basename(fullPath),
-					path: workspaceRelativePath(root, fullPath),
-					type: "file",
-					size: stat.size,
-					updatedAt: stat.mtime.toISOString(),
-				});
+				try {
+					ensureDir(dirname(fullPath));
+					writeFileSync(fullPath, data);
+
+					// Archive deep-inspection (§R10): only real zip parsing is
+					// available (no pure-JS .rar reader exists) — .rar attachments
+					// get the size gate above but not entry-level inspection.
+					if (isChatAttachment && ext === ".zip") {
+						const inspection = await inspectArchive(fullPath, attachmentLimits);
+						if (!inspection.ok) {
+							rmSync(fullPath, { force: true });
+							failed.push({ fileName, error: describeArchiveRejection(fileName, inspection, attachmentLimits) });
+							continue;
+						}
+					}
+
+					const stat = statSync(fullPath);
+					uploaded.push({
+						name: basename(fullPath),
+						path: workspaceRelativePath(root, fullPath),
+						type: "file",
+						size: stat.size,
+						updatedAt: stat.mtime.toISOString(),
+					});
+				} catch (err) {
+					logger.error({ err, fileName }, "failed to write uploaded file");
+					failed.push({ fileName, error: err instanceof Error ? err.message : "write failed" });
+				}
 			}
 			if (installedSkill) scheduleSkillsReload();
-			json(res, 201, { uploaded });
+			json(res, 201, failed.length > 0 ? { uploaded, failed } : { uploaded });
 			return;
 		}
 
@@ -4370,6 +4439,37 @@ const server = createServer(async (req, res) => {
 			return;
 		}
 
+		// --- Chat attachment limits (BRD "附件类型与上传业务规则" v1.0, §R6 —
+		// admin-configurable numeric limits; the A/B/C/D type whitelist itself is
+		// fixed product policy, not configurable here). Same partial-merge
+		// pattern as /api/settings/memory above. ---
+		if (method === "PUT" && url === "/api/settings/attachment-limits") {
+			const body = (await readBody(req)) as Record<string, unknown>;
+			const keys = [
+				"maxImageBytes", "maxImagesPerMessage", "maxDocumentBytes",
+				"maxArchiveBytes", "maxArchiveEntries", "maxArchiveExtractedBytes",
+				"maxAttachmentsPerMessage", "maxAttachmentBytesPerMessage", "maxAttachmentsPerSession",
+			] as const;
+			if (keys.every((k) => body[k] === undefined)) {
+				json(res, 400, { error: `Provide at least one of: ${keys.join(", ")}` });
+				return;
+			}
+			for (const k of keys) {
+				if (body[k] !== undefined && (typeof body[k] !== "number" || !Number.isFinite(body[k] as number) || (body[k] as number) <= 0)) {
+					json(res, 400, { error: `${k} must be a positive number` });
+					return;
+				}
+			}
+			config.attachmentLimits = normalizeAttachmentLimitsConfig({
+				...(config.attachmentLimits ?? {}),
+				...(Object.fromEntries(keys.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]))),
+			});
+			config = saveConfig(paths.configPath, config);
+			syncConfig(config);
+			json(res, 200, buildSafeSettings());
+			return;
+		}
+
 		// --- Simple Mode toggle (streamlined experience: force-locks memory off
 		// at runtime and hides notebook/profile tabs; does not touch memory config) ---
 		if (method === "PUT" && url === "/api/settings/simple-mode") {
@@ -4488,10 +4588,31 @@ const server = createServer(async (req, res) => {
 				return;
 			}
 			const rawImages = Array.isArray(body.images) ? body.images : [];
-			const images = rawImages
+			const shapedImages = rawImages
 				.filter((img): img is { data: string; mimeType: string } =>
 					img && typeof img.data === "string" && typeof img.mimeType === "string")
 				.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
+			// Backstop for BRD attachment limits (§R4) — the web UI's own pre-check
+			// should catch this first; a request that bypasses it gets a clear
+			// rejection here rather than silently sending a subset of images.
+			const attachmentLimits = config.attachmentLimits ?? DEFAULT_ATTACHMENT_LIMITS;
+			const { accepted: images, rejectedCount } = filterInlineImages(shapedImages, attachmentLimits);
+			if (rejectedCount > 0) {
+				json(res, 400, {
+					error: `${rejectedCount} image(s) exceed the attachment limits (max ${Math.round(attachmentLimits.maxImageBytes / (1024 * 1024))}MB each, ${attachmentLimits.maxImagesPerMessage} per message)`,
+				});
+				return;
+			}
+			// §R4 real-format check — catch an image whose declared mimeType doesn't
+			// match its actual magic bytes (belt-and-suspenders; the client has no
+			// way to sniff this before it ever reaches the server).
+			const formatMismatchCount = (await Promise.all(
+				images.map(async (img) => !(await verifyRealImageFormat(img.mimeType, Buffer.from(img.data, "base64")))),
+			)).filter(Boolean).length;
+			if (formatMismatchCount > 0) {
+				json(res, 400, { error: `${formatMismatchCount} image(s) failed real-format verification (declared type doesn't match file content)` });
+				return;
+			}
 			const requestedSessionId = typeof body.sessionId === "string" ? body.sessionId : null;
 			const imageSessionId = requestedSessionId || getCurrentSessionId();
 			const imageWorkspaceId = workspaceRegistry.getSessionWorkspaceId(imageSessionId);
@@ -4668,10 +4789,29 @@ const server = createServer(async (req, res) => {
 				return;
 			}
 			const rawImages = Array.isArray(body.images) ? body.images : [];
-			const images = rawImages
+			const shapedImages = rawImages
 				.filter((img): img is { data: string; mimeType: string } =>
 					img && typeof img.data === "string" && typeof img.mimeType === "string")
 				.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
+			// Backstop for BRD attachment limits (§R4) — see the identical check in
+			// POST /api/chat for why this rejects the whole request rather than
+			// silently sending a subset.
+			const streamAttachmentLimits = config.attachmentLimits ?? DEFAULT_ATTACHMENT_LIMITS;
+			const { accepted: images, rejectedCount: rejectedImageCount } = filterInlineImages(shapedImages, streamAttachmentLimits);
+			if (rejectedImageCount > 0) {
+				json(res, 400, {
+					error: `${rejectedImageCount} image(s) exceed the attachment limits (max ${Math.round(streamAttachmentLimits.maxImageBytes / (1024 * 1024))}MB each, ${streamAttachmentLimits.maxImagesPerMessage} per message)`,
+				});
+				return;
+			}
+			// §R4 real-format check — see the identical check in POST /api/chat.
+			const streamFormatMismatchCount = (await Promise.all(
+				images.map(async (img) => !(await verifyRealImageFormat(img.mimeType, Buffer.from(img.data, "base64")))),
+			)).filter(Boolean).length;
+			if (streamFormatMismatchCount > 0) {
+				json(res, 400, { error: `${streamFormatMismatchCount} image(s) failed real-format verification (declared type doesn't match file content)` });
+				return;
+			}
 			// Persist inline images to the workspace so file-path tools (ocr_image,
 			// parse_document) can read them when the chat model can't see images.
 			const imagePaths = persistInlineImages(images, streamWorkspaceRoot);

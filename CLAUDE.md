@@ -18,9 +18,9 @@ This is an npm workspaces monorepo (Node.js >=20.6.0, ES modules) for **Inno Age
 
 PI SDK packages (`@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, `@earendil-works/pi-web-ui`) are pulled from npm.
 
-Key dependencies: `ws` (WebSocket), `node-pty` (PTY terminal), `cron-parser` (scheduler), `@larksuiteoapi/node-sdk` (Feishu), `typebox` (validation), `undici` (HTTP client), `@juicesharp/rpiv-ask-user-question` (bridges agent `ask_user_question` tool calls to the web UI), `pi-subagents` (optional subagent support), `pi-sandbox` (optional OS-level sandboxing), `graphology` + `graphology-communities-louvain` (wiki knowledge graph), `yaml` (YAML parsing), `@llamaindex/liteparse` (document parsing).
+Key dependencies: `ws` (WebSocket), `node-pty` (PTY terminal), `cron-parser` (scheduler), `@larksuiteoapi/node-sdk` (Feishu), `typebox` (validation), `undici` (HTTP client), `@juicesharp/rpiv-ask-user-question` (bridges agent `ask_user_question` tool calls to the web UI), `pi-subagents` (optional subagent support), `pi-sandbox` (optional OS-level sandboxing), `graphology` + `graphology-communities-louvain` (wiki knowledge graph), `yaml` (YAML parsing), `@llamaindex/liteparse` (document parsing), `file-type` (magic-byte format sniffing for chat attachments), `yauzl` (streaming zip parsing for chat-attachment archive security).
 
-`vitest` is a dev dependency but no test scripts or test files exist — the TypeScript build (`npm run build`) serves as the sanity check. No ESLint or Prettier configuration exists.
+Tests run with `npm test` (`vitest run`, root script). The suite is ~20 files (133 tests). The TypeScript build (`npm run build`) remains the primary sanity check. No ESLint or Prettier configuration exists.
 
 ### TypeScript configs
 
@@ -277,6 +277,8 @@ Plain Node `http.createServer` (no framework), ~4700 lines in a single file. Key
 - `PATCH /api/settings/content-hub` — update content hub config.
 - `PATCH /api/settings/memory` — toggle L1/L2/L3 memory.
 - `PATCH /api/settings/theme` — persist UI theme preference.
+- `PUT /api/settings/attachment-limits` — update chat-attachment type/size/count limits (see `attachment-policy.ts`).
+- `POST /api/workspace/upload` — write files into a workspace; `body.channel: "chat-attachment"` opts into BRD attachment validation (whitelist, size/count limits, archive security), the plain workspace file browser's own uploads stay unrestricted.
 - `GET /health` — health check (polled by Electron loading screen).
 - WebSocket upgrade for `/api/terminal` — xterm.js in-browser terminal.
 
@@ -418,6 +420,7 @@ Note: `simpleMode` and `ui.theme` are not in `config.example.json` but are added
 - `ui.theme` persists the UI theme preference.
 - `bridge.token` is the shared secret for bridge-mode IM channels (QQ, WeChat). Each channel supports `personalOnly` (restrict to specified users) and `allowedUserIds` (whitelist of user IDs).
 - `ocrApi` configures PaddleOCR-VL for image OCR. Agent uses this via `ocr-tools.ts`. Requires a `token` from Baidu PaddleOCR.
+- `attachmentLimits` (not in `config.example.json`, defaulted by `normalizeAttachmentLimitsConfig`) — admin-configurable size/count limits for chat-message attachments (`maxImageBytes`, `maxImagesPerMessage`, `maxDocumentBytes`, `maxArchiveBytes`, `maxArchiveEntries`, `maxArchiveExtractedBytes`, `maxAttachmentsPerMessage`, `maxAttachmentBytesPerMessage`, `maxAttachmentsPerSession`); the extension whitelist/tier table itself is fixed policy, not configurable — see `attachment-policy.ts`.
 
 ### Runtime PI SDK settings (`<configDir>/settings.json`)
 

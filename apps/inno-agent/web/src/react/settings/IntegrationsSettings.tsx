@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Database, KeyRound, Globe } from "lucide-react";
+import { ChevronDown, Database, KeyRound, Globe, Paperclip } from "lucide-react";
 import { settingsStore } from "../../stores/settings-store.js";
 import type { InnoSettings } from "../../types/settings.js";
+import { DEFAULT_ATTACHMENT_LIMITS, type AttachmentLimits } from "../../utils/attachment-policy.js";
 import { inputCls } from "../ui/input.js";
 import { SettingsSection } from "./primitives.js";
 
@@ -368,6 +369,132 @@ function TavilySettings({ settings }: { settings: InnoSettings }) {
 	);
 }
 
+/* ---------- Attachment limits (BRD §R6 — admin-configurable chat upload quotas) ---------- */
+
+type LimitKey = keyof AttachmentLimits;
+
+// These five are byte counts in the config; shown/edited as whole MB for a
+// human-sized admin form and converted back to bytes on save.
+const BYTE_FIELDS: readonly LimitKey[] = [
+	"maxImageBytes", "maxDocumentBytes", "maxArchiveBytes", "maxArchiveExtractedBytes", "maxAttachmentBytesPerMessage",
+];
+
+const FIELD_ORDER: readonly LimitKey[] = [
+	"maxImageBytes", "maxImagesPerMessage",
+	"maxDocumentBytes",
+	"maxArchiveBytes", "maxArchiveEntries", "maxArchiveExtractedBytes",
+	"maxAttachmentsPerMessage", "maxAttachmentBytesPerMessage", "maxAttachmentsPerSession",
+];
+
+function isByteField(key: LimitKey): boolean {
+	return (BYTE_FIELDS as readonly string[]).includes(key);
+}
+
+function toDisplay(key: LimitKey, value: number): string {
+	return String(isByteField(key) ? Math.round(value / (1024 * 1024)) : value);
+}
+
+function toStored(key: LimitKey, display: string): number {
+	const n = Number(display);
+	if (!Number.isFinite(n) || n <= 0) return DEFAULT_ATTACHMENT_LIMITS[key];
+	return Math.round(isByteField(key) ? n * 1024 * 1024 : n);
+}
+
+function fieldsToValues(limits: AttachmentLimits): Record<LimitKey, string> {
+	return Object.fromEntries(FIELD_ORDER.map((k) => [k, toDisplay(k, limits[k])])) as Record<LimitKey, string>;
+}
+
+function AttachmentLimitsSettings({ settings }: { settings: InnoSettings }) {
+	const { t } = useTranslation();
+	const limits: AttachmentLimits = settings.attachmentLimits ?? DEFAULT_ATTACHMENT_LIMITS;
+	const [open, setOpen] = useState(false);
+	const [values, setValues] = useState<Record<LimitKey, string>>(() => fieldsToValues(limits));
+	const [saving, setSaving] = useState(false);
+	const [saved, setSaved] = useState(false);
+
+	useEffect(() => {
+		setValues(fieldsToValues(limits));
+		setSaved(false);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [settings.attachmentLimits]);
+
+	function handleChange(key: LimitKey, raw: string) {
+		setValues((v) => ({ ...v, [key]: raw }));
+		setSaved(false);
+	}
+
+	async function handleSave() {
+		setSaving(true);
+		setSaved(false);
+		try {
+			const patch: Partial<AttachmentLimits> = {};
+			for (const key of FIELD_ORDER) patch[key] = toStored(key, values[key]);
+			await settingsStore.saveAttachmentLimits(patch);
+			setSaved(true);
+		} catch {
+			// error surfaced via store
+		} finally {
+			setSaving(false);
+		}
+	}
+
+	function handleReset() {
+		setValues(fieldsToValues(DEFAULT_ATTACHMENT_LIMITS));
+		setSaved(false);
+	}
+
+	return (
+		<div className="min-w-0 rounded-lg bg-[var(--inno-surface)] p-4">
+			<button className="inno-settings-card-toggle flex w-full min-w-0 items-start gap-2 text-left" onClick={() => setOpen((v) => !v)}>
+				<Paperclip size={16} className="mt-0.5 shrink-0 text-[var(--inno-text)]" />
+				<div className="min-w-0 flex-1">
+					<h4 className="break-words text-sm font-medium text-[var(--inno-text)]">{t("settings.attachmentLimits.title")}</h4>
+					<p className="mt-1 max-w-full break-words text-xs leading-relaxed text-[var(--inno-text-muted)]">
+						{t("settings.attachmentLimits.desc")}
+					</p>
+				</div>
+				<ChevronDown size={14} className={`mt-1 shrink-0 text-[var(--inno-text-subtle)] transition-transform ${open ? "rotate-180" : ""}`} />
+			</button>
+
+			{open ? (
+				<div className="mt-3 grid gap-3">
+					{FIELD_ORDER.map((key) => (
+						<div key={key} className="flex min-w-0 items-center justify-between gap-3">
+							<label htmlFor={`attachment-limit-${key}`} className="min-w-0 flex-1 text-xs text-[var(--inno-text-muted)]">
+								{t(`settings.attachmentLimits.${key}`)}
+							</label>
+							<input
+								id={`attachment-limit-${key}`}
+								className={`${inputCls} w-20 shrink-0 text-right`}
+								type="number"
+								min={1}
+								value={values[key]}
+								onChange={(e) => handleChange(key, e.target.value)}
+							/>
+						</div>
+					))}
+					<div className="flex min-w-0 flex-wrap items-center gap-2">
+						<button
+							disabled={saving}
+							onClick={() => void handleSave()}
+							className="flex h-8 shrink-0 items-center rounded-md inno-primary-button px-3 text-xs text-white disabled:opacity-50"
+						>
+							{saving ? t("common.loading") : saved ? t("settings.attachmentLimits.saved") : t("common.save")}
+						</button>
+						<button
+							disabled={saving}
+							onClick={handleReset}
+							className="flex h-8 shrink-0 items-center rounded-md border border-[var(--inno-border)] px-3 text-xs text-[var(--inno-text-muted)] hover:bg-[var(--inno-surface-muted)] hover:text-[var(--inno-text)]"
+						>
+							{t("settings.attachmentLimits.reset")}
+						</button>
+					</div>
+				</div>
+			) : null}
+		</div>
+	);
+}
+
 /* ---------- Integrations category page ---------- */
 
 export function IntegrationsSettings({ settings }: { settings: InnoSettings }) {
@@ -377,6 +504,7 @@ export function IntegrationsSettings({ settings }: { settings: InnoSettings }) {
 			<ContentHubSettings settings={settings} />
 			<OcrSettings settings={settings} />
 			<TavilySettings settings={settings} />
+			<AttachmentLimitsSettings settings={settings} />
 		</SettingsSection>
 	);
 }

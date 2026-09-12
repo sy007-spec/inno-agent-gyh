@@ -421,6 +421,21 @@
 			"saved": "Saved",
 			"clear": "Clear"
 		},
+		"attachmentLimits": {
+			"title": "Chat attachment limits",
+			"desc": "Controls the type, size, and count limits for attachments uploaded in chat (not the workspace file browser's own uploads).",
+			"maxImageBytes": "Max size per image (MB)",
+			"maxImagesPerMessage": "Max images per message",
+			"maxDocumentBytes": "Max size per document (MB)",
+			"maxArchiveBytes": "Max archive size (MB)",
+			"maxArchiveEntries": "Max entries per archive",
+			"maxArchiveExtractedBytes": "Max archive extracted size (MB)",
+			"maxAttachmentsPerMessage": "Max attachments per message",
+			"maxAttachmentBytesPerMessage": "Max total attachment size per message (MB)",
+			"maxAttachmentsPerSession": "Max attachments per session",
+			"saved": "Saved",
+			"reset": "Reset to defaults"
+		},
 		"form": {
 			"providerId": "Provider id",
 			"baseUrl": "Base URL",

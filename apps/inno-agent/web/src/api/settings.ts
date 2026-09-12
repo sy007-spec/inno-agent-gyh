@@ -93,6 +93,15 @@ export async function saveOcrSettings(payload: OcrSettingsPayload): Promise<Inno
 	});
 }
 
+export type AttachmentLimitsPatch = Partial<NonNullable<InnoSettings["attachmentLimits"]>>;
+
+export async function saveAttachmentLimitsSettings(patch: AttachmentLimitsPatch): Promise<InnoSettings> {
+	return apiFetch<InnoSettings>("/api/settings/attachment-limits", {
+		method: "PUT",
+		body: JSON.stringify(patch),
+	});
+}
+
 export async function saveTavilySettings(apiKey: string): Promise<InnoSettings> {
 	return apiFetch<InnoSettings>("/api/settings/tavily", {
 		method: "PUT",

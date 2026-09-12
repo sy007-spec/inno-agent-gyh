@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { RuntimePaths } from "./runtime.js";
+import { DEFAULT_ATTACHMENT_LIMITS, type InnoAttachmentLimitsConfig } from "./attachment-policy.js";
 
 export type InnoProviderApi = "openai-completions" | "openai-responses" | "anthropic-messages" | string;
 export type InnoModelInput = "text" | "image";
@@ -173,6 +174,15 @@ export interface InnoConfig {
 	tavily?: {
 		apiKey: string;
 	};
+	/**
+	 * Business limits for chat-message attachments (upload button / drag-drop /
+	 * paste — see attachment-policy.ts). Does NOT govern the general workspace
+	 * file browser's own uploads, which stay unrestricted by design (BRD v1.0,
+	 * 2026-09-12, §R2: the two channels are governed separately). Every field is
+	 * optional so a partial admin edit only touches the fields it sets; missing
+	 * fields fall back to DEFAULT_ATTACHMENT_LIMITS.
+	 */
+	attachmentLimits?: InnoAttachmentLimitsConfig;
 }
 
 interface LegacyInnoConfig extends Partial<InnoConfig> {
@@ -281,6 +291,30 @@ export function normalizeContentHubConfig(
 	};
 }
 
+/**
+ * Fill in any attachment limit the admin hasn't explicitly set from
+ * DEFAULT_ATTACHMENT_LIMITS. Each field is checked independently (not
+ * all-or-nothing) so a partial `PUT /api/settings/attachment-limits` payload
+ * only overrides what it actually sent.
+ */
+export function normalizeAttachmentLimitsConfig(
+	limits: Partial<InnoAttachmentLimitsConfig> | undefined,
+): InnoAttachmentLimitsConfig {
+	const pick = (value: number | undefined, fallback: number) =>
+		typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+	return {
+		maxImageBytes: pick(limits?.maxImageBytes, DEFAULT_ATTACHMENT_LIMITS.maxImageBytes),
+		maxImagesPerMessage: pick(limits?.maxImagesPerMessage, DEFAULT_ATTACHMENT_LIMITS.maxImagesPerMessage),
+		maxDocumentBytes: pick(limits?.maxDocumentBytes, DEFAULT_ATTACHMENT_LIMITS.maxDocumentBytes),
+		maxArchiveBytes: pick(limits?.maxArchiveBytes, DEFAULT_ATTACHMENT_LIMITS.maxArchiveBytes),
+		maxArchiveEntries: pick(limits?.maxArchiveEntries, DEFAULT_ATTACHMENT_LIMITS.maxArchiveEntries),
+		maxArchiveExtractedBytes: pick(limits?.maxArchiveExtractedBytes, DEFAULT_ATTACHMENT_LIMITS.maxArchiveExtractedBytes),
+		maxAttachmentsPerMessage: pick(limits?.maxAttachmentsPerMessage, DEFAULT_ATTACHMENT_LIMITS.maxAttachmentsPerMessage),
+		maxAttachmentBytesPerMessage: pick(limits?.maxAttachmentBytesPerMessage, DEFAULT_ATTACHMENT_LIMITS.maxAttachmentBytesPerMessage),
+		maxAttachmentsPerSession: pick(limits?.maxAttachmentsPerSession, DEFAULT_ATTACHMENT_LIMITS.maxAttachmentsPerSession),
+	};
+}
+
 export function normalizeConfig(config: LegacyInnoConfig): InnoConfig {
 	const providers: Record<string, InnoProviderConfig> = {};
 	for (const [providerId, providerConfig] of Object.entries(config.providers ?? {})) {
@@ -321,6 +355,7 @@ export function normalizeConfig(config: LegacyInnoConfig): InnoConfig {
 		ui: { theme: "innospark" },
 		ocrApi: config.ocrApi,
 		tavily: config.tavily,
+		attachmentLimits: normalizeAttachmentLimitsConfig(config.attachmentLimits),
 	} as InnoConfig;
 }
 

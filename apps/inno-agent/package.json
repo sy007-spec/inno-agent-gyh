@@ -25,6 +25,7 @@
 		"@types/ws": "^8.18.1",
 		"axios": "^1.16.1",
 		"cron-parser": "^5.5.0",
+		"file-type": "^22.1.0",
 		"graphology": "^0.26.0",
 		"graphology-communities-louvain": "^2.0.2",
 		"node-pty": "^1.0.0",
@@ -36,12 +37,14 @@
 		"typebox": "^1.1.24",
 		"undici": "^7.19.1",
 		"ws": "^8.21.0",
-		"yaml": "^2.6.1"
+		"yaml": "^2.6.1",
+		"yauzl": "^3.4.0"
 	},
 	"engines": {
 		"node": ">=20.6.0"
 	},
 	"devDependencies": {
-		"@types/pino": "^7.0.4"
+		"@types/pino": "^7.0.4",
+		"@types/yauzl": "^3.4.0"
 	}
 }

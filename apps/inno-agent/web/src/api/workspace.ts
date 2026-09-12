@@ -55,10 +55,27 @@ export async function saveWorkspaceFile(path: string, content: string, workspace
 	});
 }
 
-export async function uploadWorkspaceFiles(files: Array<{ path: string; dataBase64: string }>, workspaceId?: string): Promise<{ uploaded: WorkspaceTreeNode[] }> {
-	return apiFetch<{ uploaded: WorkspaceTreeNode[] }>("/api/workspace/upload", {
+export interface WorkspaceUploadResult {
+	uploaded: WorkspaceTreeNode[];
+	/** Present only when at least one file was rejected (BRD attachment rules) —
+	 * only ever populated when `channel: "chat-attachment"` was passed; the
+	 * general workspace-browser upload never rejects anything. */
+	failed?: Array<{ fileName: string; error: string }>;
+}
+
+/**
+ * `channel: "chat-attachment"` opts into the BRD's type/size/count validation —
+ * omit it (the default, used by the workspace file browser) for today's
+ * unrestricted behavior. See attachment-policy.ts (both copies) for the rules.
+ */
+export async function uploadWorkspaceFiles(
+	files: Array<{ path: string; dataBase64: string }>,
+	workspaceId?: string,
+	channel?: "chat-attachment",
+): Promise<WorkspaceUploadResult> {
+	return apiFetch<WorkspaceUploadResult>("/api/workspace/upload", {
 		method: "POST",
-		body: JSON.stringify(withWorkspace({ files }, workspaceId)),
+		body: JSON.stringify(withWorkspace(channel ? { files, channel } : { files }, workspaceId)),
 	});
 }
 

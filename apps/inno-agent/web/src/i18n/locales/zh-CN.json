@@ -421,6 +421,21 @@
 			"saved": "已保存",
 			"clear": "清除"
 		},
+		"attachmentLimits": {
+			"title": "对话附件限制",
+			"desc": "控制对话中可上传附件的类型、大小与数量上限（不含工作区文件浏览器的上传）。",
+			"maxImageBytes": "单张图片大小上限 (MB)",
+			"maxImagesPerMessage": "单条消息图片数量上限",
+			"maxDocumentBytes": "单个文档大小上限 (MB)",
+			"maxArchiveBytes": "压缩包大小上限 (MB)",
+			"maxArchiveEntries": "压缩包内文件数量上限",
+			"maxArchiveExtractedBytes": "压缩包解压后总大小上限 (MB)",
+			"maxAttachmentsPerMessage": "单条消息附件数量上限",
+			"maxAttachmentBytesPerMessage": "单条消息附件总大小上限 (MB)",
+			"maxAttachmentsPerSession": "单个会话累计附件数量上限",
+			"saved": "已保存",
+			"reset": "恢复默认值"
+		},
 		"form": {
 			"providerId": "提供方 ID",
 			"baseUrl": "Base URL",

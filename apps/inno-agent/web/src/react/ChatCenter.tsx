@@ -23,6 +23,7 @@ import { uploadWorkspaceFiles } from "../api/workspace.js";
 import { normalizeMarkdownMath } from "../utils/markdown-math.js";
 import { splitStreamingMarkdown } from "../utils/markdown-blocks.js";
 import { groupByCategory, matchesQuery } from "../utils/category-grouping.js";
+import { DEFAULT_ATTACHMENT_LIMITS, formatRejectionMessage, validateAttachmentClientSide, type AttachmentLimits } from "../utils/attachment-policy.js";
 import { answeredQuestionnaireFromTool, buildAnsweredQuestionnaireTimeline } from "../utils/questionnaire.js";
 import type { AnsweredQuestionnaireView } from "../utils/questionnaire.js";
 import { useStoreSnapshot } from "./hooks.js";
@@ -135,6 +136,10 @@ interface PendingUpload {
 	fileName: string;
 	path: string;
 	file: File;
+	/** BRD §R7 — surfaced by renderUploadChips; "failed" keeps the chip visible
+	 * with its own error instead of the item just disappearing. */
+	status?: "pending" | "failed";
+	error?: string;
 }
 
 const CHANNEL_BADGE_CLASS: Record<string, string> = {
@@ -769,6 +774,11 @@ export function ChatCenter() {
 		const m = list.find((x) => x.provider === s.defaultProvider && x.id === s.defaultModel);
 		return m ? m.input.includes("image") : true;
 	});
+	// BRD attachment limits — server is the source of truth (admin-configurable,
+	// see Settings), fall back to the same defaults until GET /api/settings
+	// resolves at boot.
+	const attachmentLimits: AttachmentLimits = useStoreSnapshot(settingsStore, () =>
+		settingsStore.settings?.attachmentLimits ?? DEFAULT_ATTACHMENT_LIMITS);
 	const [presets, setPresets] = useState<PresetMeta[]>([]);
 	const [openingPresetId, setOpeningPresetId] = useState<string | null>(null);
 	const [togglingMode, setTogglingMode] = useState(false);
@@ -1105,6 +1115,7 @@ export function ChatCenter() {
 				}
 
 				let uploadedFiles: Array<{ fileName: string; path: string }> = [];
+				let failedUploads: Array<{ fileName: string; error: string }> = [];
 				if (pendingUploads.length > 0) {
 					const uploadItems = await Promise.all(
 						pendingUploads.map(async ({ path, file }) => ({
@@ -1115,17 +1126,21 @@ export function ChatCenter() {
 					const result = await uploadWorkspaceFiles(
 						uploadItems,
 						targetWorkspaceId,
+						"chat-attachment",
 					);
 					uploadedFiles = (result.uploaded ?? []).map((node) => ({
 						fileName: node.name,
 						path: node.path,
 					}));
-					appStore.setRightPanelTab("preview");
-					if (appStore.workspaceMode === "collapsed") appStore.setWorkspaceMode("quarter");
-					if (workspaceStore.activeWorkspaceId !== targetWorkspaceId) {
-						await workspaceStore.setActiveWorkspace(targetWorkspaceId ?? null);
-					} else {
-						await workspaceStore.loadTree();
+					failedUploads = result.failed ?? [];
+					if (uploadedFiles.length > 0) {
+						appStore.setRightPanelTab("preview");
+						if (appStore.workspaceMode === "collapsed") appStore.setWorkspaceMode("quarter");
+						if (workspaceStore.activeWorkspaceId !== targetWorkspaceId) {
+							await workspaceStore.setActiveWorkspace(targetWorkspaceId ?? null);
+						} else {
+							await workspaceStore.loadTree();
+						}
 					}
 				}
 
@@ -1138,9 +1153,21 @@ export function ChatCenter() {
 					: undefined;
 
 				resetComposer();
-				setUploads([]);
+				// §R8: a single attachment's server-side rejection must not block the
+				// message or the other attachments — keep failed chips visible (with
+				// their reason) instead of wiping all upload state on any failure.
+				if (failedUploads.length > 0) {
+					const failedByName = new Map(failedUploads.map((f) => [f.fileName, f.error]));
+					setUploads(
+						pendingUploads
+							.filter((u) => failedByName.has(u.fileName))
+							.map((u) => ({ ...u, status: "failed" as const, error: failedByName.get(u.fileName) })),
+					);
+				} else {
+					setUploads([]);
+				}
 				setInlineImages([]);
-				setWsError("");
+				if (failedUploads.length === 0) setWsError("");
 				void chatStore.send(messageContent, imagesToSend, targetSessionId);
 			} catch (err) {
 				setWsError(err instanceof Error ? err.message : t("chat.errCreateSession"));
@@ -1179,13 +1206,68 @@ export function ChatCenter() {
 		});
 	}, []);
 
+	/**
+	 * Shared entry point for all three attachment sources — the upload button
+	 * (handleFiles), drag-and-drop (handleComposerDrop), and paste (handlePaste)
+	 * — so the BRD's whitelist/size/count rules apply identically everywhere
+	 * (§R5), and a rejected file never reaches an upload call at all (§R3:
+	 * reject at selection, never mid-upload). "attachmentsInSession" is left at
+	 * 0 here — the session-cumulative cap depends on server-side state (how
+	 * many chat attachments already landed in this workspace) that the client
+	 * doesn't track across reloads, so it's enforced authoritatively by
+	 * /api/workspace/upload instead; a file that clears every *local* check but
+	 * trips the session cap still surfaces via that response's `failed` array
+	 * and the chip's own failed state, it just isn't pre-empted here.
+	 */
+	const stageFiles = useCallback((files: File[]) => {
+		if (files.length === 0) return;
+		const images: File[] = [];
+		const documents: File[] = [];
+		const rejections: string[] = [];
+		let imagesInMessage = inlineImages.length;
+		let attachmentsInMessage = uploads.length;
+		let attachmentBytesInMessage = uploads.reduce((sum, u) => sum + u.file.size, 0);
+
+		for (const file of files) {
+			const result = validateAttachmentClientSide(
+				{ name: file.name, size: file.size },
+				attachmentLimits,
+				{ imagesInMessage, attachmentsInMessage, attachmentBytesInMessage, attachmentsInSession: 0 },
+			);
+			if (!result.ok) {
+				rejections.push(formatRejectionMessage(result));
+				continue;
+			}
+			if (result.kind === "image") {
+				images.push(file);
+				imagesInMessage += 1;
+			} else {
+				documents.push(file);
+				attachmentsInMessage += 1;
+				attachmentBytesInMessage += file.size;
+			}
+		}
+
+		if (images.length > 0) addImageFiles(images);
+		if (documents.length > 0) {
+			const items: PendingUpload[] = documents.map((file) => ({
+				fileName: file.name,
+				path: file.name.replace(/[\\/?%*:|"<>]/g, "_").trim() || `upload-${Date.now()}`,
+				file,
+				status: "pending",
+			}));
+			setUploads((current) => [...current, ...items]);
+		}
+		if (rejections.length > 0) setWsError(rejections.join("\n"));
+	}, [inlineImages, uploads, attachmentLimits, addImageFiles]);
+
 	const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
 		// Image paste: keep existing behavior.
 		const imageItems = Array.from(e.clipboardData.items).filter((item) => item.type.startsWith("image/"));
 		if (imageItems.length > 0) {
 			e.preventDefault();
 			const files = imageItems.map((item) => item.getAsFile()).filter((f): f is File => f !== null);
-			addImageFiles(files);
+			stageFiles(files);
 			return;
 		}
 		// Large text paste: insert a placeholder token at the caret and hold
@@ -1219,14 +1301,14 @@ export function ChatCenter() {
 				});
 			}
 		}
-	}, [addImageFiles, t]);
+	}, [stageFiles, t]);
 
 	const handleImageFiles = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
 		const files = Array.from(event.target.files ?? []).filter((f) => f.type.startsWith("image/"));
 		if (files.length === 0) return;
-		addImageFiles(files);
+		stageFiles(files);
 		if (event.target) event.target.value = "";
-	}, [addImageFiles]);
+	}, [stageFiles]);
 
 	const removeInlineImage = useCallback((index: number) => {
 		setInlineImages((prev) => prev.filter((_, i) => i !== index));
@@ -1235,15 +1317,9 @@ export function ChatCenter() {
 	const handleFiles = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
 		const files = Array.from(event.target.files ?? []);
 		if (files.length === 0) return;
-		setWsError("");
-		const items = files.map((file) => ({
-			fileName: file.name,
-			path: file.name.replace(/[\\/?%*:|"<>]/g, "_").trim() || `upload-${Date.now()}`,
-			file,
-		}));
-		setUploads((current) => [...current, ...items]);
+		stageFiles(files);
 		if (event.target) event.target.value = "";
-	}, []);
+	}, [stageFiles]);
 
 	const removeUpload = useCallback((index: number) => {
 		setUploads((current) => current.filter((_, i: number) => i !== index));
@@ -1266,44 +1342,39 @@ export function ChatCenter() {
 		setIsComposerDragOver(false);
 	}, [isExternalFileDrag]);
 
-	/**
-	 * Dropped files split the same way the two toolbar buttons already do:
-	 * images become inline previews (addImageFiles, same path as the image
-	 * button / paste), everything else becomes an upload chip (same shape
-	 * handleFiles already builds from the file-picker input).
-	 */
+	/** Dropped files go through the same `stageFiles` validation/routing as the
+	 * two toolbar buttons and paste (BRD §R5 — identical rule at every entry point). */
 	const handleComposerDrop = useCallback((e: React.DragEvent) => {
 		if (!isExternalFileDrag(e)) return;
 		e.preventDefault();
 		setIsComposerDragOver(false);
-		const files = Array.from(e.dataTransfer.files ?? []);
-		if (files.length === 0) return;
-		const images = files.filter((f) => f.type.startsWith("image/"));
-		const rest = files.filter((f) => !f.type.startsWith("image/"));
-		if (images.length > 0) addImageFiles(images);
-		if (rest.length > 0) {
-			setWsError("");
-			const items = rest.map((file) => ({
-				fileName: file.name,
-				path: file.name.replace(/[\\/?%*:|"<>]/g, "_").trim() || `upload-${Date.now()}`,
-				file,
-			}));
-			setUploads((current) => [...current, ...items]);
-		}
-	}, [isExternalFileDrag, addImageFiles]);
+		stageFiles(Array.from(e.dataTransfer.files ?? []));
+	}, [isExternalFileDrag, stageFiles]);
 
 	const renderUploadChips = () => (
 		uploads.length > 0 ? (
 			<div className="mb-2 flex flex-wrap gap-1.5">
-				{uploads.map((file, index: number) => (
-					<span key={`${file.path}-${index}`} className="inline-flex items-center gap-1 rounded-md border border-[var(--inno-border)] bg-[var(--inno-surface-muted)] px-2 py-1 text-xs shadow-sm">
-						<span className="max-w-[220px] truncate">{file.fileName}</span>
-						<span className="text-[var(--inno-text-muted)]">{file.path}</span>
-						<button className="text-[var(--inno-text-muted)] hover:text-[var(--inno-text)]" title={t("chat.removeUpload")} onClick={() => removeUpload(index)}>
-							<X size={14} />
-						</button>
-					</span>
-				))}
+				{uploads.map((file, index: number) => {
+					const failed = file.status === "failed";
+					return (
+						<span
+							key={`${file.path}-${index}`}
+							title={failed ? file.error : undefined}
+							className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-sm ${
+								failed
+									? "border-[var(--inno-danger-border)] bg-[var(--inno-danger-bg)] text-[var(--inno-danger)]"
+									: "border-[var(--inno-border)] bg-[var(--inno-surface-muted)]"
+							}`}
+						>
+							{failed ? <AlertTriangle size={12} className="shrink-0" /> : null}
+							<span className="max-w-[220px] truncate">{file.fileName}</span>
+							<span className={failed ? "" : "text-[var(--inno-text-muted)]"}>{failed ? file.error : file.path}</span>
+							<button className={failed ? "hover:opacity-70" : "text-[var(--inno-text-muted)] hover:text-[var(--inno-text)]"} title={t("chat.removeUpload")} onClick={() => removeUpload(index)}>
+								<X size={14} />
+							</button>
+						</span>
+					);
+				})}
 			</div>
 		) : null
 	);
@@ -1323,6 +1394,18 @@ export function ChatCenter() {
 						</button>
 					</span>
 				))}
+			</div>
+		) : null
+	);
+
+	/** BRD §R9 — non-blocking pre-send notice: the message still sends normally,
+	 * this just sets expectations that the image will go through OCR instead of
+	 * native vision since the selected model doesn't declare image input support. */
+	const renderImageModelNotice = () => (
+		inlineImages.length > 0 && !currentModelSupportsNativeImages ? (
+			<div className="mb-2 flex items-center gap-2 rounded-md border border-[var(--inno-border)] bg-[var(--inno-accent-soft)] px-3 py-1.5 text-xs text-[var(--inno-text-muted)]">
+				<AlertTriangle size={14} className="shrink-0 text-[var(--inno-warning)]" />
+				<span>{t("chat.attachImageViaOcr")}</span>
 			</div>
 		) : null
 	);
@@ -1372,7 +1455,7 @@ export function ChatCenter() {
 					<button className="inno-toolbar-icon-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-full disabled:opacity-50" title={activeWorkspaceId ? t("chat.uploadFiles") : t("chat.uploadHint")} disabled={chat.isSending || isUploading || !activeWorkspaceId} onClick={() => fileInputRef.current?.click()}>
 						{isUploading ? <Spinner size={16} /> : <Paperclip size={16} />}
 					</button>
-					<button className="inno-toolbar-icon-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-full disabled:opacity-50" title={t("chat.attachImage")} disabled={chat.isSending} onClick={() => imageInputRef.current?.click()}>
+					<button className="inno-toolbar-icon-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-full disabled:opacity-50" title={currentModelSupportsNativeImages ? t("chat.attachImage") : t("chat.attachImageViaOcr")} disabled={chat.isSending} onClick={() => imageInputRef.current?.click()}>
 						<Image size={16} />
 					</button>
 				</div>
@@ -1426,6 +1509,7 @@ export function ChatCenter() {
 
 						{renderUploadChips()}
 						{renderInlineImagePreviews()}
+						{renderImageModelNotice()}
 						{renderQuestionHint()}
 						{renderComposer(t("chat.welcomePlaceholder"))}
 
@@ -1704,6 +1788,7 @@ export function ChatCenter() {
 				<div className="mx-auto max-w-3xl">
 					{renderUploadChips()}
 					{renderInlineImagePreviews()}
+					{renderImageModelNotice()}
 					{renderQuestionHint()}
 					{wsError ? <p className="mb-2 text-xs text-[var(--inno-danger)]">{wsError}</p> : null}
 					{renderComposer(t("chat.composerPlaceholder"))}

@@ -1,5 +1,5 @@
 import { EventEmitter } from "./event-emitter.js";
-import { getSettings, switchBackendModel, upsertProvider, deleteProviderApi, deleteModelApi, saveChannelsSettings, saveMemorySettings, saveSimpleModeSettings, saveGithubSettings, saveOcrSettings, saveTavilySettings, saveContentHubSettings, type MemorySettingsPatch, type ContentHubPayload, type OcrSettingsPayload } from "../api/settings.js";
+import { getSettings, switchBackendModel, upsertProvider, deleteProviderApi, deleteModelApi, saveChannelsSettings, saveMemorySettings, saveSimpleModeSettings, saveGithubSettings, saveOcrSettings, saveTavilySettings, saveContentHubSettings, saveAttachmentLimitsSettings, type MemorySettingsPatch, type ContentHubPayload, type OcrSettingsPayload, type AttachmentLimitsPatch } from "../api/settings.js";
 import type { InnoSettings, UpsertProviderRequest, ChannelsSettingsPayload } from "../types/settings.js";
 
 interface SettingsStoreEvents {
@@ -18,6 +18,7 @@ class SettingsStoreImpl extends EventEmitter<SettingsStoreEvents> {
 	isSavingTavily = false;
 	isSavingContentHub = false;
 	isSavingSimpleMode = false;
+	isSavingAttachmentLimits = false;
 	error: string | null = null;
 
 	async load(): Promise<void> {
@@ -200,6 +201,22 @@ class SettingsStoreImpl extends EventEmitter<SettingsStoreEvents> {
 			throw err;
 		} finally {
 			this.isSavingTavily = false;
+			this.emit("change", undefined);
+		}
+	}
+
+	async saveAttachmentLimits(patch: AttachmentLimitsPatch): Promise<void> {
+		this.isSavingAttachmentLimits = true;
+		this.error = null;
+		this.emit("change", undefined);
+		try {
+			this.settings = await saveAttachmentLimitsSettings(patch);
+		} catch (err) {
+			this.error = err instanceof Error ? err.message : "Failed to save attachment limits";
+			this.emit("change", undefined);
+			throw err;
+		} finally {
+			this.isSavingAttachmentLimits = false;
 			this.emit("change", undefined);
 		}
 	}

@@ -108,4 +108,16 @@ export interface InnoSettings {
 	memory?: { l1Enabled: boolean; l2Enabled: boolean; l3Enabled: boolean };
 	simpleMode?: { enabled: boolean };
 	ui?: { theme: string };
+	/** Chat-attachment business limits — see web/src/utils/attachment-policy.ts. */
+	attachmentLimits?: {
+		maxImageBytes: number;
+		maxImagesPerMessage: number;
+		maxDocumentBytes: number;
+		maxArchiveBytes: number;
+		maxArchiveEntries: number;
+		maxArchiveExtractedBytes: number;
+		maxAttachmentsPerMessage: number;
+		maxAttachmentBytesPerMessage: number;
+		maxAttachmentsPerSession: number;
+	};
 }
