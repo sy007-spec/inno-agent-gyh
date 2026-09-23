@@ -1,3 +1,19 @@
+/** One underlying LLM call's usage. A single assistant bubble can aggregate
+ * several of these when a turn spans a tool-use loop. */
+export interface ChatUsageCall {
+	provider?: string;
+	model?: string;
+	/** Present when the provider resolved a different concrete model than requested. */
+	responseModel?: string;
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	totalTokens: number;
+	/** usage.cost.total; 0 when the provider has no pricing configured. */
+	cost: number;
+}
+
 export interface ChatMessage {
 	role: "user" | "assistant";
 	content: string;
@@ -28,6 +44,8 @@ export interface ChatMessage {
 	turnId?: string;
 	transient?: boolean;
 	complete?: boolean;
+	/** Per-LLM-call token/cost usage backing this turn. */
+	usageCalls?: ChatUsageCall[];
 }
 
 // --- Structured chat attachments (便捷输入 / plain attachments) ---

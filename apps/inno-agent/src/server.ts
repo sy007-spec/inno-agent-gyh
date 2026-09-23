@@ -1142,6 +1142,22 @@ function parseSessionFile(filePath: string): { summary: SessionSummary; messages
 					pending.content = pending.content ? `${pending.content}\n${content}` : content;
 				}
 				pending.timestamp = ts;
+				const usage = message.usage as Record<string, unknown> | undefined;
+				if (usage && typeof usage === "object") {
+					const cost = usage.cost as Record<string, unknown> | undefined;
+					pending.usageCalls = pending.usageCalls ?? [];
+					pending.usageCalls.push({
+						provider: typeof message.provider === "string" ? message.provider : undefined,
+						model: typeof message.model === "string" ? message.model : undefined,
+						responseModel: typeof message.responseModel === "string" ? message.responseModel : undefined,
+						input: typeof usage.input === "number" ? usage.input : 0,
+						output: typeof usage.output === "number" ? usage.output : 0,
+						cacheRead: typeof usage.cacheRead === "number" ? usage.cacheRead : 0,
+						cacheWrite: typeof usage.cacheWrite === "number" ? usage.cacheWrite : 0,
+						totalTokens: typeof usage.totalTokens === "number" ? usage.totalTokens : 0,
+						cost: typeof cost?.total === "number" ? cost.total : 0,
+					});
+				}
 				if (typeof message.stopReason === "string") pending.stopReason = message.stopReason;
 				// If this assistant entry ended the turn (stopReason "stop"), finalize.
 				if (typeof message.stopReason === "string" && message.stopReason !== "toolUse") {

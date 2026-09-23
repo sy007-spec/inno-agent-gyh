@@ -1,5 +1,5 @@
 import { EventEmitter } from "./event-emitter.js";
-import { getSettings, switchBackendModel, upsertProvider, deleteProviderApi, deleteModelApi, saveChannelsSettings, saveMemorySettings, savePermissionMode as savePermissionModeApi, saveSmartInputSettings, saveMcpSettings, saveCloseBehavior, saveMarkdownSettings, saveGithubSettings, saveOcrSettings, saveTavilySettings, saveContentHubSettings, type MemorySettingsPatch, type ContentHubPayload, type OcrSettingsPayload } from "../api/settings.js";
+import { getSettings, switchBackendModel, upsertProvider, deleteProviderApi, deleteModelApi, saveChannelsSettings, saveMemorySettings, savePermissionMode as savePermissionModeApi, saveSmartInputSettings, saveMcpSettings, saveCloseBehavior, saveMarkdownSettings, saveChatUsageSettings, saveGithubSettings, saveOcrSettings, saveTavilySettings, saveContentHubSettings, type MemorySettingsPatch, type ContentHubPayload, type OcrSettingsPayload } from "../api/settings.js";
 import type { WindowCloseBehavior, PermissionPolicyMode } from "../types/settings.js";
 import type { InnoSettings, SmartInputSettings, UpsertProviderRequest, ChannelsSettingsPayload } from "../types/settings.js";
 
@@ -23,6 +23,7 @@ class SettingsStoreImpl extends EventEmitter<SettingsStoreEvents> {
 	isSavingMcp = false;
 	isSavingCloseBehavior = false;
 	isSavingMarkdown = false;
+	isSavingChatUsage = false;
 	error: string | null = null;
 
 	async load(): Promise<void> {
@@ -221,6 +222,22 @@ class SettingsStoreImpl extends EventEmitter<SettingsStoreEvents> {
 			throw err;
 		} finally {
 			this.isSavingMarkdown = false;
+			this.emit("change", undefined);
+		}
+	}
+
+	async saveShowTokenUsage(enabled: boolean): Promise<void> {
+		this.isSavingChatUsage = true;
+		this.error = null;
+		this.emit("change", undefined);
+		try {
+			this.settings = await saveChatUsageSettings(enabled);
+		} catch (err) {
+			this.error = err instanceof Error ? err.message : "Failed to save chat usage settings";
+			this.emit("change", undefined);
+			throw err;
+		} finally {
+			this.isSavingChatUsage = false;
 			this.emit("change", undefined);
 		}
 	}

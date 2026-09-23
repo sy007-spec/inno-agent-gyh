@@ -2742,6 +2742,52 @@ inno-workspace-panel textarea {
 	box-shadow: var(--inno-ring);
 }
 
+/* Per-turn token usage chip (opt-in, Settings → Lab). Wider than the square
+   icon-only .inno-message-action buttons since it also carries a token count. */
+.inno-usage-badge {
+	width: auto;
+	gap: 3px;
+	padding: 0 6px;
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+}
+
+.inno-usage-panel {
+	width: min(300px, calc(100vw - 16px));
+}
+
+.inno-usage-panel-list {
+	display: grid;
+	gap: 6px;
+	max-height: 260px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.inno-usage-panel-row {
+	padding: 6px 8px;
+	border-radius: 6px;
+	background: var(--inno-surface-muted);
+}
+
+.inno-usage-panel-model {
+	font-size: 11.5px;
+	font-weight: 600;
+	color: var(--inno-text);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.inno-usage-panel-metrics {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 10px;
+	margin-top: 3px;
+	font-size: 10.5px;
+	color: var(--inno-text-muted);
+}
+
 /* The composer root is an unstyled stack: the rounded card plus the sub-pill
    row beneath it. ChatCenter measures this root for the conversation bottom
    space, so the pills count toward the covered area. */
