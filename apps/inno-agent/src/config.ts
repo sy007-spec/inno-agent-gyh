@@ -157,6 +157,9 @@ export interface InnoUiConfig {
 	closeBehavior: InnoCloseBehavior;
 	/** Allow $...$ inline math. Disabled by default so currency stays plain text. */
 	mathSingleDollar: boolean;
+	/** Show a per-turn token usage badge (with click-through call breakdown) on
+	 * chat bubbles. Opt-in via Settings → Lab — off by default. */
+	showTokenUsage: boolean;
 }
 
 /**
@@ -483,7 +486,12 @@ export function normalizeUiConfig(ui: Partial<InnoUiConfig> | undefined): InnoUi
 	const closeBehavior: InnoCloseBehavior = ui?.closeBehavior === "hide" || ui?.closeBehavior === "quit"
 		? ui.closeBehavior
 		: "ask";
-	return { theme, closeBehavior, mathSingleDollar: ui?.mathSingleDollar === true };
+	return {
+		theme,
+		closeBehavior,
+		mathSingleDollar: ui?.mathSingleDollar === true,
+		showTokenUsage: ui?.showTokenUsage === true,
+	};
 }
 
 /**

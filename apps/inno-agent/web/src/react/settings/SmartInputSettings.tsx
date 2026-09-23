@@ -37,6 +37,42 @@ interface RuleDraft {
 
 type FormatRule = Pick<SmartInputRule, "extensions" | "allExtensions" | "excludeExtensions" | "isPreset">;
 
+function ChatUsageToggle() {
+	const { t } = useTranslation();
+	const state = useStoreSnapshot(settingsStore, () => ({
+		enabled: settingsStore.settings?.ui?.showTokenUsage === true,
+		isSaving: settingsStore.isSavingChatUsage,
+		isReady: settingsStore.settings !== null,
+	}));
+	return (
+		<Switch
+			checked={state.enabled}
+			disabled={!state.isReady || state.isSaving}
+			aria-label={t("settings.chatUsage.title", "Token 用量徽标")}
+			onChange={(enabled) => void settingsStore.saveShowTokenUsage(enabled).catch(() => undefined)}
+		/>
+	);
+}
+
+/** Experimental per-turn token usage badge — off by default, opt-in here. */
+function ChatUsageSection() {
+	const { t } = useTranslation();
+	return (
+		<SettingsSection
+			title={t("settings.chatUsage.title", "Token 用量徽标")}
+			description={t("settings.chatUsage.desc", "在聊天气泡上显示每轮消耗的 Token 数，点击查看逐次调用明细")}
+		>
+			<SettingsCard>
+				<SettingsRow
+					label={t("settings.chatUsage.rowLabel", "显示 Token 用量")}
+					description={t("settings.chatUsage.rowDesc", "默认关闭；开启后每条回复下方会出现用量徽标")}
+					control={<ChatUsageToggle />}
+				/>
+			</SettingsCard>
+		</SettingsSection>
+	);
+}
+
 export function SmartInputSettings() {
 	const { t } = useTranslation();
 	const state = useStoreSnapshot(settingsStore, () => ({
@@ -61,7 +97,7 @@ export function SmartInputSettings() {
 		if (!state.isSaving && smartInput) setDraft(smartInput);
 	}, [smartInput, state.isSaving]);
 
-	if (!draft) return null;
+	if (!draft) return <ChatUsageSection />;
 
 	const persist = (next: SmartInputSettings) => {
 		setDraft(next);
@@ -431,6 +467,8 @@ export function SmartInputSettings() {
 	) : null;
 
 	return (
+		<>
+		<ChatUsageSection />
 		<SettingsSection
 			title={<span className="inline-flex items-center gap-1">{t("settings.smartInput.title", "便捷输入")} <span className="inno-smart-beta inno-smart-beta--settings">Beta</span></span>}
 			description={t("settings.smartInput.desc", "在输入框输入关键词即可转为文件气泡，把文件明确绑定到指代词")}
@@ -498,5 +536,6 @@ export function SmartInputSettings() {
 				</p>
 			</SettingsCard>
 		</SettingsSection>
+		</>
 	);
 }

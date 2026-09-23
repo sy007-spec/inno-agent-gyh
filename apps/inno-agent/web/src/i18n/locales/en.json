@@ -684,6 +684,12 @@
 			"title": "Single-dollar inline math",
 			"description": "Allow $...$ math. Off by default so prices remain plain text; \\(...\\) and $$...$$ still work."
 		},
+		"chatUsage": {
+			"title": "Token usage badge",
+			"desc": "Show how many tokens each turn used, with a click-through per-call breakdown",
+			"rowLabel": "Show token usage",
+			"rowDesc": "Off by default; when on, a usage badge appears under every reply"
+		},
 		"permissions": {
 			"title": "Tool permissions",
 			"description": "How strictly tool calls are approved. Dangerous commands and sensitive files are denied in every mode; changes apply immediately, no restart needed.",
@@ -1009,6 +1015,17 @@
 		"expandFullContent": "Expand full content",
 		"collapseFullContent": "Collapse full content",
 		"composerPlaceholder": "Type a message…",
+		"usage": {
+			"badgeLabel": "Token usage: {{value}}",
+			"panelTitle": "Token usage",
+			"input": "Input",
+			"output": "Output",
+			"cacheRead": "Cache read",
+			"cacheWrite": "Cache write",
+			"total": "Total",
+			"cost": "Cost",
+			"callsTotal": "Total ({{count}} calls)"
+		},
 		"minimap": {
 			"navigation": "Current conversation navigation",
 			"jumpToTurn": "Jump to turn {{count}}: {{title}}",

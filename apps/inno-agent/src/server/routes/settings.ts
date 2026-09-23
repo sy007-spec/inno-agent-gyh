@@ -695,5 +695,21 @@ export async function handleSettingsRoutes(
 		return true;
 	}
 
+	// PUT /api/settings/chat-usage — persist the opt-in per-turn token usage badge (Settings → Lab)
+	if (method === "PUT" && url === "/api/settings/chat-usage") {
+		const body = (await readBody(req)) as Record<string, unknown>;
+		if (typeof body.showTokenUsage !== "boolean") {
+			json(res, 400, { error: "showTokenUsage must be a boolean" });
+			return true;
+		}
+		config.ui = {
+			...normalizeUiConfig(config.ui),
+			showTokenUsage: body.showTokenUsage,
+		};
+		save(saveConfig(paths.configPath, config));
+		json(res, 200, buildSafeSettings(config));
+		return true;
+	}
+
 	return false;
 }

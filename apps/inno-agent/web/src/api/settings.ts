@@ -164,6 +164,13 @@ export async function saveMarkdownSettings(mathSingleDollar: boolean): Promise<I
 	});
 }
 
+export async function saveChatUsageSettings(showTokenUsage: boolean): Promise<InnoSettings> {
+	return apiFetch<InnoSettings>("/api/settings/chat-usage", {
+		method: "PUT",
+		body: JSON.stringify({ showTokenUsage }),
+	});
+}
+
 export async function feishuQrRegister(): Promise<{ deviceCode: string; qrUrl: string; expiresIn: number; interval: number }> {
 	return apiFetch<{ deviceCode: string; qrUrl: string; expiresIn: number; interval: number }>("/api/channels/feishu/qr-register", {
 		method: "POST",

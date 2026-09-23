@@ -6,6 +6,23 @@ import type { ChatAttachments } from "./attachments.js";
  * route domain. Extracted verbatim from server.ts during the P2 route split.
  */
 
+/** One underlying LLM call's usage, captured off the raw AssistantMessage
+ * JSONL entry. A single UI bubble can aggregate several of these when a turn
+ * spans a tool-use loop (multiple LLM calls before the final answer). */
+export interface SessionMessageUsageCall {
+	provider?: string;
+	model?: string;
+	/** Present when the provider resolved a different concrete model than requested. */
+	responseModel?: string;
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	totalTokens: number;
+	/** usage.cost.total; 0 when the provider has no pricing configured. */
+	cost: number;
+}
+
 export interface SessionMessageSummary {
 	role: "user" | "assistant";
 	content: string;
@@ -35,6 +52,9 @@ export interface SessionMessageSummary {
 	/** Structured chat attachments (bubble bindings + loose files) merged in
 	 * from the attachments sidecar; not stored in the session JSONL itself. */
 	attachments?: ChatAttachments;
+	/** Per-LLM-call token/cost usage, one entry per raw assistant JSONL entry
+	 * merged into this bubble. */
+	usageCalls?: SessionMessageUsageCall[];
 }
 
 export interface SessionTraceEvent {

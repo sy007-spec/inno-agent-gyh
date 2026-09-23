@@ -17,6 +17,7 @@ import { skillMessageFromContent } from "./skill-message-collapse.js";
 import { parseAgentCommandMessage, type AgentCommandMessage } from "./agent-command-message.js";
 import { PopoverSurface } from "../ui/PopoverSurface.js";
 import { AgentTraceTimeline } from "./AgentTraceTimeline.js";
+import { UsageBadge } from "./UsageBadge.js";
 import { finalizeTraceSteps, hasVisibleTraceSteps, traceStepsFromEvents, traceStepsFromLegacy, traceTerminalState } from "../../utils/chat-trace.js";
 
 // Pure, props-driven chat rendering components. This module must NOT import
@@ -742,6 +743,7 @@ export const MessageBubble = memo(function MessageBubble({ message, showChannel,
 					>
 						{copied ? <Check size={14} /> : <Copy size={14} />}
 					</button>
+					<UsageBadge usageCalls={message.usageCalls} />
 					{showRetry && onRetry ? (
 						<button
 							type="button"

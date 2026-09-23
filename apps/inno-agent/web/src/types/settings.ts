@@ -115,7 +115,7 @@ export interface InnoSettings {
 	};
 	smartInput?: SmartInputSettings;
 	mcp?: { enabled: boolean };
-	ui?: { theme: string; closeBehavior: WindowCloseBehavior; mathSingleDollar: boolean };
+	ui?: { theme: string; closeBehavior: WindowCloseBehavior; mathSingleDollar: boolean; showTokenUsage: boolean };
 }
 
 /* ---------- Web research (pi-web-access: web_research / source_check / fetch_content) ---------- */

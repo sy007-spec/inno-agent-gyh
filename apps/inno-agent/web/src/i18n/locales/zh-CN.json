@@ -684,6 +684,12 @@
 			"title": "单美元符号行内公式",
 			"description": "允许用 $...$ 表示公式。默认关闭，避免价格和货币金额被误判；\\(...\\) 与 $$...$$ 不受影响。"
 		},
+		"chatUsage": {
+			"title": "Token 用量徽标",
+			"desc": "在聊天气泡上显示每轮消耗的 Token 数，点击查看逐次调用明细",
+			"rowLabel": "显示 Token 用量",
+			"rowDesc": "默认关闭；开启后每条回复下方会出现用量徽标"
+		},
 		"permissions": {
 			"title": "工具权限",
 			"description": "控制 agent 执行命令前的审批粒度。危险命令与敏感文件在任何模式下都会被拒绝；切换后立即生效，无需重启。",
@@ -1009,6 +1015,17 @@
 		"expandFullContent": "展开完整内容",
 		"collapseFullContent": "收起完整内容",
 		"composerPlaceholder": "输入消息…",
+		"usage": {
+			"badgeLabel": "Token 用量：{{value}}",
+			"panelTitle": "Token 用量",
+			"input": "输入",
+			"output": "输出",
+			"cacheRead": "缓存读取",
+			"cacheWrite": "缓存写入",
+			"total": "合计",
+			"cost": "费用",
+			"callsTotal": "合计（{{count}} 次调用）"
+		},
 		"minimap": {
 			"navigation": "当前对话导航",
 			"jumpToTurn": "跳转到第 {{count}} 轮：{{title}}",
